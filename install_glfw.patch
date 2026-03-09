@@ -1,0 +1,19 @@
+--- a/third_party/dawn/src/dawn/glfw/CMakeLists.txt
++++ b/third_party/dawn/src/dawn/glfw/CMakeLists.txt
+@@ -48,3 +48,12 @@ target_compile_definitions(dawn_glfw PRIVATE "WGPU_GLFW_IMPLEMENTATION")
+ if(BUILD_SHARED_LIBS)
+     target_compile_definitions(dawn_glfw PUBLIC "WGPU_GLFW_SHARED_LIBRARY")
+ endif()
+ 
+ add_library(webgpu_glfw ALIAS dawn_glfw)
++
++# Add this to include dawn_glfw in the 'cmake install' step
++if (DAWN_ENABLE_INSTALL)
++    install(TARGETS dawn_glfw
++        EXPORT DawnTargets
++        LIBRARY DESTINATION lib
++        ARCHIVE DESTINATION lib
++        RUNTIME DESTINATION bin
++        INCLUDES DESTINATION include
++    )
++endif()
