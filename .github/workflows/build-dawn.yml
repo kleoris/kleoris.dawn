@@ -11,7 +11,7 @@ on:
       build_type:
         description: 'Build type (shared or static)'
         required: true
-        default: 'shared'
+        default: 'static'
         type: choice
         options:
           - shared
@@ -98,7 +98,7 @@ jobs:
           cmake --build $OUT -j 4
 
       - name: Upload build artifacts
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: dawn-${{ runner.os }}-${{ github.event.inputs.build_type }}
           path: third_party/dawn/out/build_${{ github.event.inputs.build_type }}/
