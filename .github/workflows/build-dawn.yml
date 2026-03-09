@@ -56,13 +56,6 @@ jobs:
     outputs:
       matrix: ${{ steps.resolve.outputs.matrix }}
     steps:
-      - name: Validate inputs
-        run: |
-          if [[ -z "${{ inputs.clang_ref_default }}" ]]; then
-            echo "::error::clang_ref_default is required but was not provided or is empty"
-            exit 1
-          fi
-
       - name: Resolve target matrix
         id: resolve
         run: |
