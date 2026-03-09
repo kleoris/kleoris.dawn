@@ -16,19 +16,61 @@ on:
         options:
           - shared
           - static
+      release_tag:
+        description: 'Release tag to publish distro artifacts (leave empty to skip release)'
+        required: false
+        default: ''
+        type: string
 
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 4
 
+permissions:
+  contents: write
+
 jobs:
+  # ── Prepare: create dynamic matrix for target platforms ────────────────
+  # instead of the standard static matrix, a JSON file is generated
+  # based on the input and passed to the main job, and then used as 
+  # a dynamic matrix
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.resolve.outputs.matrix }}
+    steps:
+      - name: Validate inputs
+        run: |
+          if [[ -z "${{ inputs.clang_ref_default }}" ]]; then
+            echo "::error::clang_ref_default is required but was not provided or is empty"
+            exit 1
+          fi
+
+      - name: Resolve target matrix
+        id: resolve
+        run: |
+          ALL='[
+            {"name":"macos-clang-21", "os":"macos-latest"},
+            {"name":"linux-clang-21", "os":"ubuntu-latest"},
+            {"name":"win-clang-21",   "os":"windows-latest"}
+          ]'
+          PLATFORM="${{ inputs.platform }}"
+          if [[ "$PLATFORM" == "all" || -z "$PLATFORM" ]]; then
+            MATRIX="$ALL"
+          else
+            MATRIX=$(echo "$ALL" | jq --arg p "$PLATFORM" '[.[] | select(.name == $p)]')
+          fi
+          echo "matrix=$(echo "$MATRIX" | jq -c .)" >> "$GITHUB_OUTPUT"
+
+  # ── Main build job ─────────────────────────────────────────────────────
   build:
+    needs: prepare
+    runs-on: ${{ matrix.runtime.os }}
     strategy:
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
-    
-    runs-on: ${{ matrix.os }}
+        runtime: ${{ fromJSON(needs.prepare.outputs.matrix) }}
     
     steps:
+      # ── Prepare source & tools ─────────────────────────────────────────
       - name: Checkout repository
         uses: actions/checkout@v4
 
@@ -73,6 +115,7 @@ jobs:
         if: runner.os != 'Windows'
         run: chmod +x build.sh
 
+      # ── Build ────────────────────────────────────────────────----------
       - name: Build Dawn (Unix)
         if: runner.os != 'Windows'
         run: ./build.sh build -${{ github.event.inputs.build_type }}
@@ -97,6 +140,35 @@ jobs:
             -DTINT_BUILD_TESTS=OFF
           cmake --build $OUT -j 4
 
+      # ── Local install ────────────────────────────────────────────────--
+      - name: Install Dawn (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          export DAWN_ROOT="$GITHUB_WORKSPACE/dist/install"
+          ./build.sh install -${{ github.event.inputs.build_type }}
+
+      - name: Install Dawn (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          INSTALL_PREFIX="$GITHUB_WORKSPACE/dist/install/${{ github.event.inputs.build_type }}"
+          BUILD_DIR="third_party/dawn/out/build_${{ github.event.inputs.build_type }}"
+          mkdir -p "$INSTALL_PREFIX"
+          cmake --install "$BUILD_DIR" --prefix "$INSTALL_PREFIX"
+
+      # ── Package for distro ─────────────────────────────────────────────
+      - name: Package installed distribution
+        shell: bash
+        run: |
+          BRANCH_SAFE=$(echo "${{ github.event.inputs.branch }}" | tr '/ ' '__')
+          INSTALL_DIR="$GITHUB_WORKSPACE/dist/install/${{ github.event.inputs.build_type }}"
+          PACKAGE_DIR="$GITHUB_WORKSPACE/dist/packages"
+          PACKAGE_NAME="dawn-${{ runner.os }}-${{ github.event.inputs.build_type }}-${BRANCH_SAFE}.tar.gz"
+
+          mkdir -p "$PACKAGE_DIR"
+          tar -czf "$PACKAGE_DIR/$PACKAGE_NAME" -C "$INSTALL_DIR" .
+          echo "PACKAGED_FILE=$PACKAGE_DIR/$PACKAGE_NAME" >> "$GITHUB_ENV"
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -104,10 +176,38 @@ jobs:
           path: third_party/dawn/out/build_${{ github.event.inputs.build_type }}/
           retention-days: 7
 
+      - name: Upload packaged install artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: dawn-${{ runner.os }}-${{ github.event.inputs.build_type }}-package
+          path: ${{ env.PACKAGED_FILE }}
+          retention-days: 30
+
       - name: Create build summary
         run: |
           echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
           echo "- Branch: ${{ github.event.inputs.branch }}" >> $GITHUB_STEP_SUMMARY
           echo "- Build Type: ${{ github.event.inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
           echo "- OS: ${{ runner.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Package: ${{ env.PACKAGED_FILE }}" >> $GITHUB_STEP_SUMMARY
           echo "- Status: ✅ Success" >> $GITHUB_STEP_SUMMARY
+
+  release:
+    needs: build
+    if: ${{ github.event.inputs.release_tag != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download packaged artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: dawn-*-package
+          path: dist/release-assets
+          merge-multiple: true
+
+      - name: Create GitHub release (distro packages only)
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: Dawn ${{ github.event.inputs.branch }} (${{ github.event.inputs.build_type }}) #${{ github.run_number }}
+          generate_release_notes: true
+          files: dist/release-assets/*.tar.gz
