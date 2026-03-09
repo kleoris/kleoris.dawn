@@ -1,0 +1,113 @@
+name: Build Dawn
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Dawn branch to build (e.g., chromium/7725, main)'
+        required: true
+        default: 'chromium/7725'
+        type: string
+      build_type:
+        description: 'Build type (shared or static)'
+        required: true
+        default: 'shared'
+        type: choice
+        options:
+          - shared
+          - static
+
+env:
+  CMAKE_BUILD_PARALLEL_LEVEL: 4
+
+jobs:
+  build:
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    
+    runs-on: ${{ matrix.os }}
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup CMake
+        uses: jwlawson/actions-setup-cmake@v1
+        with:
+          cmake-version: '3.25'
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies (Ubuntu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            ninja-build \
+            libvulkan-dev \
+            libx11-dev \
+            libxrandr-dev \
+            libxinerama-dev \
+            libxcursor-dev \
+            libxi-dev
+
+      - name: Install dependencies (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja
+
+      - name: Install dependencies (Windows)
+        if: runner.os == 'Windows'
+        run: |
+          choco install ninja
+
+      - name: Clone Dawn repository
+        run: |
+          git clone --branch ${{ github.event.inputs.branch }} --depth 1 https://dawn.googlesource.com/dawn third_party/dawn
+
+      - name: Make build script executable
+        if: runner.os != 'Windows'
+        run: chmod +x build.sh
+
+      - name: Build Dawn (Unix)
+        if: runner.os != 'Windows'
+        run: ./build.sh build -${{ github.event.inputs.build_type }}
+
+      - name: Build Dawn (Windows)
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          export DAWN_SRC=third_party/dawn
+          export OUT=$DAWN_SRC/out/build_${{ github.event.inputs.build_type }}
+          mkdir -p $OUT
+          cmake -S $DAWN_SRC -B $OUT \
+            -DDAWN_ENABLE_INSTALL=ON \
+            -DDAWN_FETCH_DEPENDENCIES=ON \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DBUILD_TESTING=OFF \
+            -DDAWN_USE_GLFW=ON \
+            -DDAWN_BUILD_TESTS=OFF \
+            -DDAWN_BUILD_BENCHMARKS=OFF \
+            -DDAWN_BUILD_SAMPLES=OFF \
+            -DDAWN_BUILD_NODE_BINDINGS=OFF \
+            -DTINT_BUILD_TESTS=OFF
+          cmake --build $OUT -j 4
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: dawn-${{ runner.os }}-${{ github.event.inputs.build_type }}
+          path: third_party/dawn/out/build_${{ github.event.inputs.build_type }}/
+          retention-days: 7
+
+      - name: Create build summary
+        run: |
+          echo "## Build Summary" >> $GITHUB_STEP_SUMMARY
+          echo "- Branch: ${{ github.event.inputs.branch }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Build Type: ${{ github.event.inputs.build_type }}" >> $GITHUB_STEP_SUMMARY
+          echo "- OS: ${{ runner.os }}" >> $GITHUB_STEP_SUMMARY
+          echo "- Status: ✅ Success" >> $GITHUB_STEP_SUMMARY
