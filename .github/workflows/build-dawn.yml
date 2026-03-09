@@ -1,8 +1,28 @@
+#
+# Original project: Kleoris - A modern Javascript/react runtime for desktop app.
+# by Laurent Mihalkovic 
+#
+# -------------------------------------------------------------------------
+# Copyright (c) 2025-present, Laurent Mihalkovic. All rights reserved.
+
 name: Build Dawn
+
+permissions:
+  contents: write
 
 on:
   workflow_dispatch:
     inputs:
+      platform:
+        description: 'Target platform to build (or "all"  to build every matrix entry)'
+        required: false
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - macos-dawn
+          - linux-dawn
+          - win-dawn
       branch:
         description: 'Dawn branch to build (e.g., chromium/7725, main)'
         required: true
@@ -25,8 +45,6 @@ on:
 env:
   CMAKE_BUILD_PARALLEL_LEVEL: 4
 
-permissions:
-  contents: write
 
 jobs:
   # ── Prepare: create dynamic matrix for target platforms ────────────────
@@ -49,9 +67,9 @@ jobs:
         id: resolve
         run: |
           ALL='[
-            {"name":"macos-clang-21", "os":"macos-latest"},
-            {"name":"linux-clang-21", "os":"ubuntu-latest"},
-            {"name":"win-clang-21",   "os":"windows-latest"}
+            {"name":"macos-dawn", "os":"macos-latest"},
+            {"name":"linux-dawn", "os":"ubuntu-latest"},
+            {"name":"win-dawn",   "os":"windows-latest"}
           ]'
           PLATFORM="${{ inputs.platform }}"
           if [[ "$PLATFORM" == "all" || -z "$PLATFORM" ]]; then
