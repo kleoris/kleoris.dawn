@@ -148,7 +148,7 @@ jobs:
           cmake -S $DAWN_SRC -B $OUT \
             -DDAWN_ENABLE_INSTALL=ON \
             -DDAWN_FETCH_DEPENDENCIES=ON \
-            -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON \
+            -DDAWN_BUILD_MONOLITHIC_LIBRARY=${{ github.event.inputs.build_type == 'shared' && 'SHARED' || 'STATIC' }} \
             -DCMAKE_BUILD_TYPE=Release \
             -DBUILD_TESTING=OFF \
             -DDAWN_USE_GLFW=ON \
