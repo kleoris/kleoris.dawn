@@ -122,6 +122,13 @@ jobs:
         run: |
           git clone --branch ${{ github.event.inputs.branch }} --depth 1 https://dawn.googlesource.com/dawn third_party/dawn
 
+      # patch to enable GLFW bridge installation
+      - name: Apply source patch
+        shell: bash
+        run: |
+          git apply --check install_glfw.patch
+          git apply install_glfw.patch
+
       - name: Make build script executable
         if: runner.os != 'Windows'
         run: chmod +x build.sh
