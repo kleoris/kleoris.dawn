@@ -1,6 +1,6 @@
 --- a/third_party/dawn/src/dawn/glfw/CMakeLists.txt
 +++ b/third_party/dawn/src/dawn/glfw/CMakeLists.txt
-@@ -65,0 +66,11 @@ add_library(webgpu_glfw ALIAS dawn_glfw)
+@@ -65,0 +66,14 @@ add_library(webgpu_glfw ALIAS dawn_glfw)
 +
 +# Add this to include dawn_glfw in the 'cmake install' step
 +if (DAWN_ENABLE_INSTALL)
@@ -10,5 +10,8 @@
 +        ARCHIVE DESTINATION lib
 +        RUNTIME DESTINATION bin
 +        INCLUDES DESTINATION include
++    )
++    install(FILES "${headers}"
++        DESTINATION include/webgpu
 +    )
 +endif()
